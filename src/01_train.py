@@ -24,16 +24,18 @@ class TrainingConfig:
 # 2. 데이터 로더 (Data Loaders)
 def get_data_loaders(batch_size: int):
 	"""
-	MNIST 데이터셋을 위한 train_loader와 test_loader를 생성하고 반환한다.
-	출처: https://pytorch.org/vision/main/generated/torchvision.datasets.MNIST.html
+	Fashion-MNIST 데이터셋을 위한 train_loader와 test_loader를 생성하고 반환한다.
+	출처: https://pytorch.org/vision/main/generated/torchvision.datasets.FashionMNIST.html
 	"""
+	# Fashion-MNIST에 맞는 정규화 값으로 변경이 필요할 수 있다.
+	# 우선 MNIST 값으로 유지한다.
 	transform = transforms.Compose([
 		transforms.ToTensor(),
 		transforms.Normalize((0.1307,), (0.3081,))
 	])
 
-	train_dataset = datasets.MNIST(root='./data', train=True, transform=transform, download=True)
-	test_dataset = datasets.MNIST(root='./data', train=False, transform=transform)
+	train_dataset = datasets.FashionMNIST(root='./data', train=True, transform=transform, download=True)
+	test_dataset = datasets.FashionMNIST(root='./data', train=False, transform=transform)
 
 	# 출처: https://pytorch.org/docs/stable/data.html#torch.utils.data.DataLoader
 	train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
@@ -62,7 +64,7 @@ class ComplexCNN(nn.Module):
 		)
 
 		# Convolutional 레이어를 거친 후의 feature_dim을 계산한다.
-		# MNIST 이미지(28x28) -> MaxPool1 -> (14x14) -> MaxPool2 -> (7x7)
+		# Fashion-MNIST 이미지(28x28) -> MaxPool1 -> (14x14) -> MaxPool2 -> (7x7)
 		self.flattened_dim = 64 * 7 * 7
 
 		self.fc_block = nn.Sequential(
