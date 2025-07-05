@@ -3,32 +3,35 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
+from typing import Dict
 
 # 분리된 모듈 임포트
 from mnist.config import TrainingConfig
 from mnist.data_loader import get_data_loaders
 from mnist.model import ComplexCNN
 
-# 1. 설정 (Configuration) -> 삭제 (config.py로 이동)
-# 2. 데이터 로더 (Data Loaders) -> 삭제 (data_loader.py로 이동)
-# 3. 모델 정의 (Model Definition) -> 삭제 (model.py로 이동)
 
-# 4. 트레이너 클래스 (Trainer Class)
-# 학습 및 평가 로직은 그대로 유지한다.
 class Trainer:
 	def __init__(self, model: nn.Module, train_loader: DataLoader, test_loader: DataLoader, config: TrainingConfig):
 		self.model = model.to(config.device)
 		self.train_loader = train_loader
 		self.test_loader = test_loader
 		self.config = config
-
 		self.criterion = nn.CrossEntropyLoss()
-		self.optimizer = optim.Adam(
+
+		# config에 따라 Optimizer 동적 생성
+		optimizer_class = getattr(optim, config.optimizer_name, None)
+		if optimizer_class is None:
+			raise ValueError(f"Optimizer {config.optimizer_name} is not supported.")
+
+		self.optimizer = optimizer_class(
 			self.model.parameters(),
 			lr=config.learning_rate,
 			weight_decay=config.weight_decay
 		)
-		self.scheduler = optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=config.num_epochs)
+
+		# 스케줄러를 ReduceLROnPlateau로 변경
+		self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=3, verbose=True)
 
 	def _train_epoch(self, epoch: int):
 		self.model.train()
@@ -46,34 +49,42 @@ class Trainer:
 					flush=True
 				)
 
-	def _evaluate(self) -> float:  # 반환 타입 명시
+	def _evaluate(self) -> Dict[str, float]:  # 반환 타입을 딕셔너리로 변경
 		self.model.eval()
+		total_loss = 0
+		correct = 0
+		total = 0
 		with torch.no_grad():
-			correct = 0
-			total = 0
 			for images, labels in self.test_loader:
 				images, labels = images.to(self.config.device), labels.to(self.config.device)
 				outputs = self.model(images)
+				loss = self.criterion(outputs, labels)
+				total_loss += loss.item()
 				_, predicted = torch.max(outputs.data, 1)
 				total += labels.size(0)
 				correct += (predicted == labels).sum().item()
-		accuracy = 100 * correct / total
-		print(f'\nTest Accuracy: {accuracy:.2f} %', flush=True)
-		print(f'Final Learning Rate: {self.scheduler.get_last_lr()[0]:.6f}', flush=True)
-		return accuracy  # accuracy 값 반환
 
-	def run(self) -> float:  # 반환 타입 명시
+		accuracy = 100 * correct / total
+		avg_loss = total_loss / len(self.test_loader)
+
+		print(f'\nTest Accuracy: {accuracy:.2f} %, Test Avg Loss: {avg_loss:.4f}', flush=True)
+		print(f'Current Learning Rate: {self.optimizer.param_groups[0]["lr"]:.6f}', flush=True)
+
+		return {'accuracy': accuracy, 'loss': avg_loss}  # accuracy와 loss 모두 반환
+
+	def run(self) -> float:  # 최종 반환 타입은 loss(float)
 		print(f"Training on {self.config.device}...", flush=True)
+		final_metrics = {}
 		for epoch in range(self.config.num_epochs):
 			self._train_epoch(epoch)
-			self.scheduler.step()
+			metrics = self._evaluate()
+			self.scheduler.step(metrics['loss'])  # loss를 기준으로 scheduler step
 
-		accuracy = self._evaluate()  # 반환된 accuracy 저장
-		return accuracy  # accuracy 반환
+		print("Training finished.")
+		return metrics['loss']  # HPO를 위해 최종 loss 반환
 
 
-# 5. 실행 (Main Execution)
-# HPO 스크립트에서 이 파일을 모듈로 사용하므로, 직접 실행되는 경우는 그대로 둔다.
+# 실행부 (수정 없음)
 if __name__ == "__main__":
 	config = TrainingConfig()
 	train_loader, test_loader = get_data_loaders(config.batch_size)

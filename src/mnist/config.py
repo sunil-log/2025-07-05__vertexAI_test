@@ -12,3 +12,4 @@ class TrainingConfig:
     learning_rate: float = 0.01
     weight_decay: float = 1e-4  # L2 Regularization을 위한 가중치 감쇠
     dropout_rate: float = 0.5
+    optimizer_name: str = "Adam"  # HPO를 위한 Optimizer 이름 추가
