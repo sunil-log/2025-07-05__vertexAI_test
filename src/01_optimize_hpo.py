@@ -39,7 +39,7 @@ if __name__ == "__main__":
 	# --- 수정된 부분 시작 ---
 	# 결과 저장을 위한 디렉터리 설정
 	# 실행 위치가 /sac/src이므로, 상위 디렉터리의 result 폴더를 의미함
-	result_dir = "../result"
+	result_dir = "result"
 	os.makedirs(result_dir, exist_ok=True)
 
 	# Optuna study 생성 시 DB 저장 경로 지정
