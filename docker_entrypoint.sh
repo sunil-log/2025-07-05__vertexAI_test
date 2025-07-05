@@ -28,4 +28,4 @@ cd /sac/src
 # ---------------------
 # run analysis scripts (commented out)
 # ---------------------
-python 01_train.py
+python 01_optimize_hpo.py
