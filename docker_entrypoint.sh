@@ -28,12 +28,4 @@ cd /sac/src
 # ---------------------
 # run analysis scripts (commented out)
 # ---------------------
-python 04_analyze_best_trials.py \
-	--base_dir "trials/250704-0736__pd_transformer_encoder__transformer__L2_added" \
-	--top_n 50 \
-	--param_filter "tf_dropout:<:1.0"
-exit
-
-# python 05_analyze_all_outer_folds.py \
-#     --base_dir "trials/250629-1641__PD_HPO_all__good_score" \
-#     --top_n 100
+python 01_train.py

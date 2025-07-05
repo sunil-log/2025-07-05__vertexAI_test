@@ -116,7 +116,9 @@ class Trainer:
 
 			if (i + 1) % 100 == 0:
 				print(
-					f'Epoch [{epoch + 1}/{self.config.num_epochs}], Step [{i + 1}/{total_steps}], Loss: {loss.item():.4f}')
+					f'Epoch [{epoch + 1}/{self.config.num_epochs}], Step [{i + 1}/{total_steps}], Loss: {loss.item():.4f}',
+					flush=True
+				)
 
 	def _evaluate(self):
 		self.model.eval()
@@ -131,11 +133,11 @@ class Trainer:
 				correct += (predicted == labels).sum().item()
 
 		accuracy = 100 * correct / total
-		print(f'\nTest Accuracy: {accuracy:.2f} %')
-		print(f'Final Learning Rate: {self.scheduler.get_last_lr()[0]:.6f}')
+		print(f'\nTest Accuracy: {accuracy:.2f} %', flush=True)
+		print(f'Final Learning Rate: {self.scheduler.get_last_lr()[0]:.6f}', flush=True)
 
 	def run(self):
-		print(f"Training on {self.config.device}...")
+		print(f"Training on {self.config.device}...", flush=True)
 		for epoch in range(self.config.num_epochs):
 			self._train_epoch(epoch)
 			self.scheduler.step()  # 에포크마다 스케줄러 업데이트
