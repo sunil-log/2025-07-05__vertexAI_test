@@ -3,102 +3,150 @@ import torch.nn as nn
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
-
-# 1. Hyperparameters 설정
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-input_size = 28 * 28  # MNIST 이미지 크기: 28x28
-hidden_size = 512
-num_classes = 10  # MNIST 클래스 수: 0-9
-num_epochs = 5
-batch_size = 100
-learning_rate = 0.001
-
-# 2. MNIST 데이터셋 로드 및 전처리
-# PyTorch 모델에 맞게 데이터를 Tensor로 변환하고 정규화(Normalize)한다.
-transform = transforms.Compose([
-	transforms.ToTensor(),
-	transforms.Normalize((0.1307,), (0.3081,))  # MNIST 데이터셋의 평균과 표준편차
-])
-
-# 데이터셋 다운로드 및 DataLoader 설정
-# 출처: https://pytorch.org/vision/main/generated/torchvision.datasets.MNIST.html
-train_dataset = datasets.MNIST(root='./data',
-                               train=True,
-                               transform=transform,
-                               download=True)
-
-test_dataset = datasets.MNIST(root='./data',
-                              train=False,
-                              transform=transform)
-
-# 출처: https://pytorch.org/docs/stable/data.html#torch.utils.data.DataLoader
-train_loader = DataLoader(dataset=train_dataset,
-                          batch_size=batch_size,
-                          shuffle=True)
-
-test_loader = DataLoader(dataset=test_dataset,
-                         batch_size=batch_size,
-                         shuffle=False)
+from dataclasses import dataclass
+import torch.nn.functional as F
 
 
-# 3. Neural Network 모델 정의
-class NeuralNet(nn.Module):
-	def __init__(self, input_size, hidden_size, num_classes):
-		super(NeuralNet, self).__init__()
-		self.fc1 = nn.Linear(input_size, hidden_size)
-		self.relu = nn.ReLU()
-		self.fc2 = nn.Linear(hidden_size, num_classes)
+# 1. 설정 (Configuration)
+# dataclass를 사용하여 하이퍼파라미터 및 설정을 체계적으로 관리한다.
+@dataclass
+class TrainingConfig:
+	device: str = "cuda" if torch.cuda.is_available() else "cpu"
+	input_channels: int = 1
+	num_classes: int = 10
+	num_epochs: int = 10
+	batch_size: int = 128
+	learning_rate: float = 0.01
+	weight_decay: float = 1e-4  # L2 Regularization을 위한 가중치 감쇠
+	dropout_rate: float = 0.5
+
+
+# 2. 데이터 로더 (Data Loaders)
+def get_data_loaders(batch_size: int):
+	"""
+	MNIST 데이터셋을 위한 train_loader와 test_loader를 생성하고 반환한다.
+	출처: https://pytorch.org/vision/main/generated/torchvision.datasets.MNIST.html
+	"""
+	transform = transforms.Compose([
+		transforms.ToTensor(),
+		transforms.Normalize((0.1307,), (0.3081,))
+	])
+
+	train_dataset = datasets.MNIST(root='./data', train=True, transform=transform, download=True)
+	test_dataset = datasets.MNIST(root='./data', train=False, transform=transform)
+
+	# 출처: https://pytorch.org/docs/stable/data.html#torch.utils.data.DataLoader
+	train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
+	test_loader = DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False)
+
+	return train_loader, test_loader
+
+
+# 3. 모델 정의 (Model Definition)
+# CNN(Convolutional Neural Network) 기반의 복잡한 모델을 정의한다.
+# Conv2d, BatchNorm2d, Dropout 등의 레이어를 포함한다.
+class ComplexCNN(nn.Module):
+	def __init__(self, config: TrainingConfig):
+		super(ComplexCNN, self).__init__()
+		self.conv_block1 = nn.Sequential(
+			nn.Conv2d(in_channels=config.input_channels, out_channels=32, kernel_size=3, padding=1),
+			nn.BatchNorm2d(32),  # Batch Normalization
+			nn.ReLU(),
+			nn.MaxPool2d(kernel_size=2, stride=2)
+		)
+		self.conv_block2 = nn.Sequential(
+			nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1),
+			nn.BatchNorm2d(64),  # Batch Normalization
+			nn.ReLU(),
+			nn.MaxPool2d(kernel_size=2, stride=2)
+		)
+
+		# Convolutional 레이어를 거친 후의 feature_dim을 계산한다.
+		# MNIST 이미지(28x28) -> MaxPool1 -> (14x14) -> MaxPool2 -> (7x7)
+		self.flattened_dim = 64 * 7 * 7
+
+		self.fc_block = nn.Sequential(
+			nn.Linear(self.flattened_dim, 1024),
+			nn.ReLU(),
+			nn.Dropout(config.dropout_rate),  # Dropout
+			nn.Linear(1024, config.num_classes)
+		)
 
 	def forward(self, x):
-		# 입력 이미지를 1차원 벡터로 변환
-		x = x.reshape(-1, input_size)
-		out = self.fc1(x)
-		out = self.relu(out)
-		out = self.fc2(out)
-		return out
+		x = self.conv_block1(x)
+		x = self.conv_block2(x)
+		x = x.view(-1, self.flattened_dim)  # Flatten
+		logits = self.fc_block(x)
+		return logits
 
 
-model = NeuralNet(input_size, hidden_size, num_classes).to(device)
+# 4. 트레이너 클래스 (Trainer Class)
+# 학습 및 평가 로직을 캡슐화한다.
+class Trainer:
+	def __init__(self, model: nn.Module, train_loader: DataLoader, test_loader: DataLoader, config: TrainingConfig):
+		self.model = model.to(config.device)
+		self.train_loader = train_loader
+		self.test_loader = test_loader
+		self.config = config
 
-# 4. Loss 함수 및 Optimizer 정의
-# 다중 클래스 분류 문제이므로 CrossEntropyLoss를 사용한다.
-criterion = nn.CrossEntropyLoss()
-# Adam optimizer를 사용하여 모델의 가중치를 업데이트한다.
-optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+		self.criterion = nn.CrossEntropyLoss()
+		self.optimizer = optim.Adam(
+			self.model.parameters(),
+			lr=config.learning_rate,
+			weight_decay=config.weight_decay  # L2 Regularization
+		)
+		# CosineAnnealingLR 스케줄러를 사용하여 learning rate를 동적으로 조절한다.
+		# 출처: https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.CosineAnnealingLR.html
+		self.scheduler = optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=config.num_epochs)
 
-# 5. 모델 학습 (Training)
-total_steps = len(train_loader)
-for epoch in range(num_epochs):
-	for i, (images, labels) in enumerate(train_loader):
-		# 데이터를 device에 할당
-		images = images.to(device)
-		labels = labels.to(device)
+	def _train_epoch(self, epoch: int):
+		self.model.train()
+		total_steps = len(self.train_loader)
+		for i, (images, labels) in enumerate(self.train_loader):
+			images, labels = images.to(self.config.device), labels.to(self.config.device)
 
-		# Forward pass
-		outputs = model(images)
-		loss = criterion(outputs, labels)
+			# Forward pass
+			outputs = self.model(images)
+			loss = self.criterion(outputs, labels)
 
-		# Backward pass 및 가중치 업데이트
-		optimizer.zero_grad()  # 이전 gradient 값을 초기화
-		loss.backward()  # backpropagation을 통해 gradient 계산
-		optimizer.step()  # 계산된 gradient를 바탕으로 가중치 업데이트
+			# Backward pass and optimization
+			self.optimizer.zero_grad()
+			loss.backward()
+			self.optimizer.step()
 
-		if (i + 1) % 100 == 0:
-			print(f'Epoch [{epoch + 1}/{num_epochs}], Step [{i + 1}/{total_steps}], Loss: {loss.item():.4f}')
+			if (i + 1) % 100 == 0:
+				print(
+					f'Epoch [{epoch + 1}/{self.config.num_epochs}], Step [{i + 1}/{total_steps}], Loss: {loss.item():.4f}')
 
-# 6. 모델 평가 (Evaluation)
-# 평가 단계에서는 gradient를 계산할 필요가 없으므로 torch.no_grad()를 사용한다.
-model.eval()  # 모델을 평가 모드로 전환
-with torch.no_grad():
-	correct = 0
-	total = 0
-	for images, labels in test_loader:
-		images = images.to(device)
-		labels = labels.to(device)
+	def _evaluate(self):
+		self.model.eval()
+		with torch.no_grad():
+			correct = 0
+			total = 0
+			for images, labels in self.test_loader:
+				images, labels = images.to(self.config.device), labels.to(self.config.device)
+				outputs = self.model(images)
+				_, predicted = torch.max(outputs.data, 1)
+				total += labels.size(0)
+				correct += (predicted == labels).sum().item()
 
-		outputs = model(images)
-		_, predicted = torch.max(outputs.data, 1)  # 가장 높은 확률을 가진 클래스를 예측값으로 선택
-		total += labels.size(0)
-		correct += (predicted == labels).sum().item()
+		accuracy = 100 * correct / total
+		print(f'\nTest Accuracy: {accuracy:.2f} %')
+		print(f'Final Learning Rate: {self.scheduler.get_last_lr()[0]:.6f}')
 
-	print(f'Accuracy of the network on the 10000 test images: {100 * correct / total:.2f} %')
+	def run(self):
+		print(f"Training on {self.config.device}...")
+		for epoch in range(self.config.num_epochs):
+			self._train_epoch(epoch)
+			self.scheduler.step()  # 에포크마다 스케줄러 업데이트
+
+		self._evaluate()
+
+
+# 5. 실행 (Main Execution)
+if __name__ == "__main__":
+	config = TrainingConfig()
+	train_loader, test_loader = get_data_loaders(config.batch_size)
+	model = ComplexCNN(config)
+	trainer = Trainer(model, train_loader, test_loader, config)
+	trainer.run()
