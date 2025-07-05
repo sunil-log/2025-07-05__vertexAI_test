@@ -2,6 +2,7 @@
 
 import optuna
 import torch
+import os  # os 모듈 임포트
 
 # 기존 모듈 임포트
 from mnist.config import TrainingConfig
@@ -35,9 +36,17 @@ def objective(trial: optuna.trial.Trial) -> float:
 
 
 if __name__ == "__main__":
-	# Optuna study 생성 시 DB 저장 및 이어하기 설정
+	# --- 수정된 부분 시작 ---
+	# 결과 저장을 위한 디렉터리 설정
+	# 실행 위치가 /sac/src이므로, 상위 디렉터리의 result 폴더를 의미함
+	result_dir = "../result"
+	os.makedirs(result_dir, exist_ok=True)
+
+	# Optuna study 생성 시 DB 저장 경로 지정
 	study_name = "mnist-hpo-study"
-	storage_name = f"sqlite:///{study_name}.db"
+	storage_path = os.path.join(result_dir, f"{study_name}.db")
+	storage_name = f"sqlite:///{storage_path}"
+	# --- 수정된 부분 끝 ---
 
 	study = optuna.create_study(
 		study_name=study_name,
@@ -50,6 +59,7 @@ if __name__ == "__main__":
 
 	# 최적화 결과 출력
 	print("\nOptimization Finished!")
+	print(f"Study results are saved in: {storage_path}")
 	print("Number of finished trials: ", len(study.trials))
 	print("Best trial:")
 	trial = study.best_trial
